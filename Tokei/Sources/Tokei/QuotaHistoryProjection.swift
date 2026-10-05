@@ -245,9 +245,11 @@ struct QuotaHistoryProjection {
                 previous[window] = (remaining, point.timestamp)
             }
         }
-        return days.flatMap { window, byDay in
+        // 拆成两步并标注类型：整条链式表达式在 Swift 6.2 下类型推断超时，编译不过。
+        let consumption: [QuotaDailyConsumption] = days.flatMap {
+            (window: String, byDay: [Date: Day]) -> [QuotaDailyConsumption] in
             let oldest = byDay.keys.min()
-            return byDay.map { start, day in
+            return byDay.map { (start: Date, day: Day) -> QuotaDailyConsumption in
                 let missingHistory = start == oldest
                     && TimeInterval(day.first) - start.timeIntervalSince1970 > edgeTolerance
                 return QuotaDailyConsumption(
@@ -258,11 +260,13 @@ struct QuotaHistoryProjection {
                     isComplete: !day.uncertain && !missingHistory
                 )
             }
-        }.sorted {
-            $0.dayStart == $1.dayStart
-                ? (tool.windowNames.firstIndex(of: $0.window) ?? 0)
-                    < (tool.windowNames.firstIndex(of: $1.window) ?? 0)
-                : $0.dayStart > $1.dayStart
+        }
+        let windowOrder = tool.windowNames
+        return consumption.sorted { (lhs: QuotaDailyConsumption, rhs: QuotaDailyConsumption) -> Bool in
+            if lhs.dayStart != rhs.dayStart { return lhs.dayStart > rhs.dayStart }
+            let lhsIndex = windowOrder.firstIndex(of: lhs.window) ?? 0
+            let rhsIndex = windowOrder.firstIndex(of: rhs.window) ?? 0
+            return lhsIndex < rhsIndex
         }
     }
 
